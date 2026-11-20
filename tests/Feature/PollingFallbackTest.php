@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Generation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\PixelforgeFixtures;
@@ -56,6 +58,69 @@ class PollingFallbackTest extends TestCase
         $this->artisan('promptedit:sync-stuck')->assertSuccessful();
 
         Queue::assertPushed(\App\Jobs\SubmitGeneration::class, fn ($job) => $job->generation->id === $stuck->id);
+    }
+
+    /**
+     * Single-flight submission: while one SubmitGeneration retry chain owns a
+     * generation (e.g. still backing off through a 503 outage), clones
+     * re-dispatched by the sync-stuck sweep must stand down instead of
+     * starting parallel retry chains against the provider.
+     */
+    public function test_submission_clone_stands_down_when_a_chain_already_owns_the_generation(): void
+    {
+        config(['queue.default' => 'database']);
+
+        $user = User::factory()->create();
+        $stuck = Generation::factory()->for($user)->create(['status' => 'queued']);
+
+        // one fake serves both halves of this test (a second Http::fake()
+        // call would be shadowed by the first one's catch-all stub)
+        Http::fake([
+            'pixelforge.test/generations' => Http::response($this->submittedPayload('gen_OWNER1'), 202),
+            // the follow-up poll gets a terminal payload so the queue drains
+            'pixelforge.test/generations/*' => Http::response($this->succeededPayload('gen_OWNER1', [
+                'input_text_tokens' => 12, 'output_tokens' => 280, 'reasoning_tokens' => 262,
+            ])),
+        ]);
+
+        // a live chain (a DIFFERENT dispatch) already owns this submission
+        $clone = new \App\Jobs\SubmitGeneration($stuck);
+        Cache::put('submit-chain-owner-'.$stuck->id, 'chain-of-another-job', now()->addMinutes(15));
+
+        dispatch($clone);
+        $this->drainQueue();
+
+        Http::assertNothingSent(); // the clone never reached the provider
+        $this->assertSame('queued', $stuck->refresh()->status);
+        $this->assertSame('chain-of-another-job', Cache::get('submit-chain-owner-'.$stuck->id), 'ownership stays with the live chain');
+
+        // the OWNER chain, by contrast, proceeds normally
+        $owner = new \App\Jobs\SubmitGeneration($stuck);
+        Cache::put('submit-chain-owner-'.$stuck->id, $owner->chainId, now()->addMinutes(15));
+        dispatch($owner);
+        $this->drainQueue();
+
+        $this->assertSame('gen_OWNER1', $stuck->refresh()->provider_generation_id);
+        $this->assertNotNull($stuck->refresh()->submitted_at, 'the owner chain really submitted');
+        Http::assertSent(fn ($request) => $request->hasHeader('Idempotency-Key', (string) $stuck->idempotency_key));
+    }
+
+    /**
+     * Drive the database queue like the flow tests do: released jobs are
+     * made immediately available so we don't sleep for backoff delays.
+     */
+    private function drainQueue(): void
+    {
+        for ($i = 0; $i < 15; $i++) {
+            DB::table('jobs')->update(['available_at' => 0, 'reserved_at' => null]);
+            if (DB::table('jobs')->count() === 0) {
+                return;
+            }
+            $this->artisan('queue:work', ['--once' => true, '--memory' => 256]);
+            usleep(100000);
+        }
+
+        $this->fail('queue did not drain within the expected number of attempts');
     }
 
     /**

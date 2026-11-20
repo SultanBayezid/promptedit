@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -36,9 +37,17 @@ class SubmitGeneration implements ShouldQueue
 
     public int $timeout = 60;
 
+    /**
+     * Identity of THIS submission retry chain. Generated at dispatch time
+     * and carried inside the job payload, so it survives release/retry
+     * cycles (the database queue re-inserts released jobs with new row ids).
+     */
+    public readonly string $chainId;
+
     public function __construct(public readonly Generation $generation)
     {
         $this->tries = (int) config('pixelforge.http.retries.max_attempts', 9);
+        $this->chainId = (string) str()->uuid();
     }
 
     public function handle(
@@ -50,6 +59,23 @@ class SubmitGeneration implements ShouldQueue
         if ($generation->isTerminal()) {
             return; // already finalized (e.g. failed in the meantime)
         }
+
+        // ------------------------------------------------------------------
+        // Single-flight submission: at most ONE SubmitGeneration retry chain
+        // may work a generation at a time. The sync-stuck sweep re-dispatches
+        // this job every minute for queued generations; without this guard
+        // each sweep would spawn an extra 9-attempt retry chain hammering the
+        // provider in parallel (observed: 19 concurrent chains during a
+        // persistent 503 outage — a self-inflicted retry storm).
+        // ------------------------------------------------------------------
+        $chainKey = 'submit-chain-owner-' . $generation->id;
+        $owner = Cache::get($chainKey);
+
+        if ($owner !== null && (string) $owner !== $this->chainId) {
+            return; // a live chain already owns this submission — stand down
+        }
+
+        Cache::put($chainKey, $this->chainId, now()->addMinutes(15));
 
         // Already submitted (retry after a crash)? Do not double-submit;
         // poll instead.
@@ -95,6 +121,8 @@ class SubmitGeneration implements ShouldQueue
             'submission_attempts' => $generation->submission_attempts + 1,
             'submitted_at' => now(),
         ])->save();
+
+        Cache::forget($chainKey); // chain complete — release single-flight ownership
 
         Log::info('generation.submitted', [
             'generation' => $generation->uuid,
