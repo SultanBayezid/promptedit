@@ -1,23 +1,36 @@
 # PromptEdit Studio
 
-AI image-generation SaaS built with **Laravel 13, Vue 3, Inertia 2, Tailwind CSS** and **PostgreSQL**,
-integrating the asynchronous [Pixelforge](https://pixelforge.promptedit.dev/docs) image-generation API.
+**Designed and developed by Sultan Bayezid.**
+
+PromptEdit is a full-stack image-generation application built with **Laravel 13, Vue 3, Inertia 2,
+Tailwind CSS** and **PostgreSQL**, integrating the asynchronous
+[Pixelforge](https://pixelforge.promptedit.dev/docs) image-generation API.
 
 **Live application:** https://promptedit.lastlineweb.com
+
+> **About the provider:** Pixelforge is the **simulated** image-generation provider used for the
+> assessment this project was built for. It exposes a realistic REST API — live pricing, asynchronous
+> generations, token-metered usage reports and signed webhooks — but it returns **abstract placeholder
+> images**, not real AI-generated images. The application itself contains no AI or machine-learning
+> models; the engineering substance of the project is the production-grade platform around the
+> provider: exact billing, asynchronous processing, webhook integrity, credit accounting and
+> financial reconciliation.
 
 PromptEdit lets users write a prompt, pick size, quality and optional reference images, see an
 **exact pre-submission price range**, and submit the request. Generations complete asynchronously
 (webhook-first, with a polling fallback); the customer is billed the **actual provider cost plus exactly
 25 %**, to the nano-dollar, and **failed generations are always free**. A credit-balance system with an
 immutable ledger backs every charge, and an admin panel provides daily / per-user financial reporting
-plus live reconciliation against the provider's own usage records.
+plus live reconciliation against the provider's own usage records. Credit top-ups are **simulated
+purchases — no real payments are processed**.
 
 ---
 
 ## 1. Project overview
 
-This is a take-home assessment build for a Senior Product Engineer role. The interesting engineering
-problems it solves:
+This is a take-home assessment build for a Senior Product Engineer role, designed and developed by
+Sultan Bayezid. It integrates Pixelforge, the assessment's simulated image-generation provider
+(described above). The interesting engineering problems it solves:
 
 - **Exact money math** — every amount is an integer number of **nano-dollars (1e-9 USD)**; floats are
   never used for money. Provider prices (9-decimal strings) are parsed, multiplied, marked up (×1.25,
@@ -46,9 +59,9 @@ problems it solves:
 - **Generation detail** — auto-polling while in flight; on completion the exact token counts,
   per-component cost breakdown, estimated vs. actual comparison, and the billing ledger entries.
   Generated images are downloaded to local storage (the provider's signed URLs expire after 24 h).
-- **Credits (bonus)** — balance page with the full ledger; mock purchases ($1–$1 000) create purchase
-  rows; submissions place a hold for the maximum possible charge; insufficient balance blocks the
-  request atomically.
+- **Credits (bonus)** — balance page with the full ledger; simulated purchases ($1–$1 000, no real
+  payment is processed) create purchase rows; submissions place a hold for the maximum possible
+  charge; insufficient balance blocks the request atomically.
 - **Admin (bonus)** — platform totals, user table, recent generations, webhook delivery audit; and the
   **financial report**: daily P&L, per-user and per-generation views with date filters, plus a live
   **reconciliation against Pixelforge `GET /v1/usage`**.
@@ -171,6 +184,8 @@ nano-dollars.
 ## 10. Pixelforge API configuration
 
 1. Create an account at <https://pixelforge.promptedit.dev> and an API key in the dashboard.
+   Pixelforge is the simulated provider used for the assessment — see the note at the top of this
+   README for what it does and does not generate.
 2. Put the key in `PIXELFORGE_API_KEY` and the base URL (`https://pixelforge.promptedit.dev/v1`) in
    `PIXELFORGE_BASE_URL`.
 3. Pricing is **never hardcoded** — it is fetched live from `GET /v1/pricing`, cached
@@ -256,7 +271,8 @@ All arithmetic uses `bcmath` on 9-decimal strings / integer nano-dollars
 - Submissions hold the worst-case charge inside a transaction with a `SELECT … FOR UPDATE` on the
   account — concurrent submissions cannot overdraw; insufficient balance aborts atomically with a
   friendly error.
-- Mock purchases (`/credits/purchase`, $1–$1 000) credit the balance and write a purchase row.
+- Simulated purchases (`/credits/purchase`, $1–$1 000) credit the balance and write a purchase row —
+  **no real payment is processed**.
 - Successful generations settle to the exact charge (refund or top-up of the hold difference in one
   `settle` row); failed generations release the hold — the customer never pays for failures.
 
@@ -306,4 +322,5 @@ dedicated database + PHP-FPM pool + `systemd` worker + per-user cron) and the
 
 - **GitHub:** https://github.com/SultanBayezid/promptedit
 - **Live app:** https://promptedit.lastlineweb.com
+- **Author:** Designed and developed by Sultan Bayezid.
 - Stack: Laravel 13 · PHP 8.4 · Vue 3 · Inertia 2 · Tailwind CSS · PostgreSQL 16

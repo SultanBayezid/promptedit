@@ -2,12 +2,18 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "sultanbayezid/promptedit",
     "type": "project",
-    "description": "AI image generation SaaS on the Pixelforge API - Laravel 13, Vue 3, Inertia 2, PostgreSQL. Exact nano-dollar billing (cost +25%), async webhooks, credit ledger, financial reconciliation.",
+    "description": "Image-generation application on the simulated Pixelforge API - Laravel 13, Vue 3, Inertia 2, PostgreSQL. Exact nano-dollar billing (cost +25%), async webhooks, credit ledger, financial reconciliation.",
     "keywords": [
         "laravel",
         "framework"
     ],
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Sultan Bayezid",
+            "role": "Designed and developed by Sultan Bayezid"
+        }
+    ],
     "require": {
         "php": "^8.3",
         "inertiajs/inertia-laravel": "^3.7",
