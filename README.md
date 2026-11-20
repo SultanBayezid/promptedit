@@ -222,7 +222,7 @@ php artisan test            # full suite (SQLite in-memory, faked Pixelforge HTT
 php artisan test --group real-api   # optional: 3 tests against the LIVE Pixelforge API
 ```
 
-The default suite is **62 tests / 238 assertions** (SQLite in-memory, faked provider HTTP) and covers: money parsing/formatting/markup (including the provider's own
+The default suite is **63 tests / 244 assertions** (SQLite in-memory, faked provider HTTP) and covers: money parsing/formatting/markup (including the provider's own
 worked example), estimate bounds, the full success pipeline (hold → settle → ledger consistency),
 insufficient balance, failures-are-free, 400/429/503 retry semantics with idempotency-key reuse,
 webhook signature/timestamp/duplicate/out-of-order/unknown-generation handling, settle idempotency,
