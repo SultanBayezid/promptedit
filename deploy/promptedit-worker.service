@@ -1,0 +1,34 @@
+# systemd unit for the PromptEdit queue worker.
+# Install at: /etc/systemd/system/promptedit-worker.service
+# Enable with: sudo systemctl daemon-reload && sudo systemctl enable --now promptedit-worker
+#
+# This is a dedicated unit — it does not touch any other service on the host.
+# Deployments pick up code changes via `php artisan queue:restart` (the worker
+# exits and systemd restarts it automatically).
+
+[Unit]
+Description=PromptEdit Laravel queue worker
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=<site-user>
+Group=<site-user>
+Restart=always
+RestartSec=3
+StartLimitInterval=60
+StartLimitBurst=5
+WorkingDirectory=/home/<site-user>/htdocs/<your-domain>
+ExecStart=/usr/bin/php8.4 /home/<site-user>/htdocs/<your-domain>/artisan queue:work database --sleep=1 --tries=3 --max-time=3600 --timeout=120
+ExecReload=/bin/kill -USR1 $MAINPID
+StandardOutput=append:/home/<site-user>/logs/worker.log
+StandardError=append:/home/<site-user>/logs/worker-error.log
+
+# Hardening: the worker never needs write access outside the app.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/<site-user>/htdocs/<your-domain>/storage /home/<site-user>/logs
+
+[Install]
+WantedBy=multi-user.target
